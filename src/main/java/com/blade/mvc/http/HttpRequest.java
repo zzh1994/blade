@@ -1,17 +1,17 @@
 package com.blade.mvc.http;
 
+import com.blade.kit.PathKit;
 import com.blade.kit.StringKit;
+import com.blade.mvc.Const;
 import com.blade.mvc.WebContext;
 import com.blade.mvc.multipart.FileItem;
 import com.blade.mvc.route.Route;
 import com.blade.server.netty.HttpConst;
-import com.blade.server.netty.SessionHandler;
+import com.blade.mvc.handler.SessionHandler;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
@@ -19,14 +19,12 @@ import io.netty.handler.codec.http.multipart.*;
 import io.netty.util.CharsetUtil;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 
 import java.io.IOException;
 import java.net.URLConnection;
 import java.nio.file.Files;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Http Request Impl
@@ -37,8 +35,9 @@ import java.util.Map;
 @Slf4j
 public class HttpRequest implements Request {
 
-    private static final HttpDataFactory HTTP_DATA_FACTORY = new DefaultHttpDataFactory(DefaultHttpDataFactory.MINSIZE); // Disk if size exceed
+    private static final HttpDataFactory HTTP_DATA_FACTORY = new DefaultHttpDataFactory(DefaultHttpDataFactory.MINSIZE);
     private static final SessionHandler  SESSION_HANDLER   = WebContext.sessionManager() != null ? new SessionHandler(WebContext.blade()) : null;
+    private static final ByteBuf         EMPTY_BUF         = Unpooled.copiedBuffer("", CharsetUtil.UTF_8);
 
     static {
         DiskFileUpload.deleteOnExitTemporaryFile = true;
@@ -47,13 +46,14 @@ public class HttpRequest implements Request {
         DiskAttribute.baseDirectory = null;
     }
 
-    private ByteBuf body = Unpooled.copiedBuffer("", CharsetUtil.UTF_8);
+    private ByteBuf body = EMPTY_BUF;
     private String  remoteAddress;
     private String  uri;
     private String  url;
     private String  protocol;
     private String  method;
     private boolean keepAlive;
+    private Session session;
 
     private Map<String, String>       headers    = null;
     private Map<String, Object>       attributes = null;
@@ -64,33 +64,37 @@ public class HttpRequest implements Request {
 
     private void init(FullHttpRequest fullHttpRequest) {
         // headers
-        HttpHeaders httpHeaders = fullHttpRequest.headers();
-        if (httpHeaders.size() > 0) {
-            this.headers = new HashMap<>(httpHeaders.size());
-            httpHeaders.forEach((header) -> headers.put(header.getKey(), header.getValue()));
-        } else {
+        var httpHeaders = fullHttpRequest.headers();
+        if (httpHeaders.isEmpty()) {
             this.headers = new HashMap<>();
+        } else {
+            this.headers = new HashMap<>(httpHeaders.size());
+            var entryIterator = httpHeaders.iteratorAsString();
+            while (entryIterator.hasNext()) {
+                var entry = entryIterator.next();
+                headers.put(entry.getKey(), entry.getValue());
+            }
         }
 
         // body content
         this.body = fullHttpRequest.content().copy();
 
         // request query parameters
-        Map<String, List<String>> parameters = new QueryStringDecoder(fullHttpRequest.uri(), CharsetUtil.UTF_8).parameters();
+        var parameters = new QueryStringDecoder(fullHttpRequest.uri(), CharsetUtil.UTF_8).parameters();
         if (null != parameters) {
             this.parameters = new HashMap<>();
             this.parameters.putAll(parameters);
         }
 
-        if (!HttpConst.METHOD_GET.equals(fullHttpRequest.method().name())) {
-            HttpPostRequestDecoder decoder = new HttpPostRequestDecoder(HTTP_DATA_FACTORY, fullHttpRequest);
+        if (HttpConst.METHOD_POST.equals(this.method) && isFormRequest()) {
+            var decoder = new HttpPostRequestDecoder(HTTP_DATA_FACTORY, fullHttpRequest);
             decoder.getBodyHttpDatas().forEach(this::parseData);
         }
 
         // cookies
-        String cookie = header(HttpConst.COOKIE_STRING);
+        var cookie = header(HttpConst.COOKIE_STRING);
         cookie = cookie.length() > 0 ? cookie : header(HttpConst.COOKIE_STRING.toLowerCase());
-        if (StringKit.isNotBlank(cookie)) {
+        if (StringKit.isNotEmpty(cookie)) {
             ServerCookieDecoder.LAX.decode(cookie).forEach(this::parseCookie);
         }
     }
@@ -99,20 +103,30 @@ public class HttpRequest implements Request {
         try {
             switch (data.getHttpDataType()) {
                 case Attribute:
-                    Attribute attribute = (Attribute) data;
-                    String name = attribute.getName();
-                    String value = attribute.getValue();
-                    this.parameters.put(name, Collections.singletonList(value));
+                    var attribute = (Attribute) data;
+                    var name = attribute.getName();
+                    var value = attribute.getValue();
+
+                    List<String> values;
+                    if (this.parameters.containsKey(name)) {
+                        values = this.parameters.get(name);
+                        values.add(value);
+                    } else {
+                        values = new ArrayList<>();
+                        values.add(value);
+                        this.parameters.put(name, values);
+                    }
+
                     break;
                 case FileUpload:
-                    FileUpload fileUpload = (FileUpload) data;
+                    var fileUpload = (FileUpload) data;
                     parseFileUpload(fileUpload);
                     break;
                 default:
                     break;
             }
         } catch (IOException e) {
-            log.error("parse request parameter error", e);
+            log.error("Parse request parameter error", e);
         } finally {
             data.release();
         }
@@ -128,11 +142,11 @@ public class HttpRequest implements Request {
                 FileItem fileItem = new FileItem(fileUpload.getName(), fileUpload.getFilename(),
                         contentType, fileUpload.length());
 
-                ByteBuf byteBuf = fileUpload.getByteBuf();
+                var byteBuf = fileUpload.getByteBuf();
                 fileItem.setData(ByteBufUtil.getBytes(byteBuf));
                 fileItems.put(fileItem.getName(), fileItem);
             } else {
-                FileItem fileItem = new FileItem(fileUpload.getName(), fileUpload.getFilename(),
+                var fileItem = new FileItem(fileUpload.getName(), fileUpload.getFilename(),
                         contentType, fileUpload.length());
                 byte[] bytes = Files.readAllBytes(fileUpload.getFile().toPath());
                 fileItem.setData(bytes);
@@ -147,7 +161,7 @@ public class HttpRequest implements Request {
      * @param nettyCookie netty raw cookie instance
      */
     private void parseCookie(io.netty.handler.codec.http.cookie.Cookie nettyCookie) {
-        Cookie cookie = new Cookie();
+        var cookie = new Cookie();
         cookie.name(nettyCookie.name());
         cookie.value(nettyCookie.value());
         cookie.httpOnly(nettyCookie.isHttpOnly());
@@ -204,7 +218,17 @@ public class HttpRequest implements Request {
 
     @Override
     public Map<String, List<String>> parameters() {
-        return parameters;
+        return this.parameters;
+    }
+
+    @Override
+    public Set<String> parameterNames() {
+        return this.parameters.keySet();
+    }
+
+    @Override
+    public List<String> parameterValues(String paramName) {
+        return this.parameters.get(paramName);
     }
 
     @Override
@@ -218,8 +242,21 @@ public class HttpRequest implements Request {
     }
 
     @Override
+    public boolean useGZIP() {
+        boolean useGZIP = WebContext.blade().environment().getBoolean(Const.ENV_KEY_GZIP_ENABLE, false);
+        if (!useGZIP) {
+            return false;
+        }
+        String acceptEncoding = this.header(HttpConst.ACCEPT_ENCODING);
+        if (StringKit.isEmpty(acceptEncoding)) {
+            return false;
+        }
+        return acceptEncoding.contains("gzip");
+    }
+
+    @Override
     public Session session() {
-        return SESSION_HANDLER.createSession(this);
+        return this.session;
     }
 
     @Override
@@ -240,12 +277,12 @@ public class HttpRequest implements Request {
 
     @Override
     public Cookie cookieRaw(@NonNull String name) {
-        return this.cookies.get(name);
+        return this.cookies().get(name);
     }
 
     @Override
     public Request cookie(@NonNull Cookie cookie) {
-        this.cookies.put(cookie.name(), cookie);
+        this.cookies().put(cookie.name(), cookie);
         return this;
     }
 
@@ -277,11 +314,6 @@ public class HttpRequest implements Request {
         return this.body;
     }
 
-    @Override
-    public String bodyToString() {
-        return this.body.toString(CharsetUtil.UTF_8);
-    }
-
     public HttpRequest() {
     }
 
@@ -297,7 +329,7 @@ public class HttpRequest implements Request {
         this.url = request.url();
 
         if (null != this.url && this.url.length() > 0) {
-            int pathEndPos = this.url.indexOf('?');
+            var pathEndPos = this.url.indexOf('?');
             this.uri = pathEndPos < 0 ? this.url : this.url.substring(0, pathEndPos);
         }
 
@@ -305,17 +337,28 @@ public class HttpRequest implements Request {
         this.protocol = request.protocol();
     }
 
-    public static HttpRequest build(ChannelHandlerContext ctx, FullHttpRequest fullHttpRequest) {
-        HttpRequest httpRequest = new HttpRequest();
+    public static HttpRequest build(FullHttpRequest fullHttpRequest, String remoteAddress) {
+        var httpRequest = new HttpRequest();
         httpRequest.keepAlive = HttpUtil.isKeepAlive(fullHttpRequest);
-        String remoteAddress = ctx.channel().remoteAddress().toString();
         httpRequest.remoteAddress = remoteAddress;
         httpRequest.url = fullHttpRequest.uri();
+
         int pathEndPos = httpRequest.url.indexOf('?');
         httpRequest.uri = pathEndPos < 0 ? httpRequest.url : httpRequest.url.substring(0, pathEndPos);
         httpRequest.protocol = fullHttpRequest.protocolVersion().text();
         httpRequest.method = fullHttpRequest.method().name();
+
         httpRequest.init(fullHttpRequest);
+
+        String cleanUri = httpRequest.uri;
+        if (!"/".equals(httpRequest.contextPath())) {
+            cleanUri = PathKit.cleanPath(cleanUri.replaceFirst(httpRequest.contextPath(), "/"));
+            httpRequest.uri = cleanUri;
+        }
+
+        if (null != SESSION_HANDLER) {
+            httpRequest.session = SESSION_HANDLER.createSession(httpRequest);
+        }
         return httpRequest;
     }
 

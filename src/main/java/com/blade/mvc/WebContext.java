@@ -1,9 +1,29 @@
+/**
+ * Copyright (c) 2017, biezhi 王爵 (biezhi.me@gmail.com)
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.blade.mvc;
 
 import com.blade.Blade;
+import com.blade.Environment;
 import com.blade.mvc.http.Request;
 import com.blade.mvc.http.Response;
+import com.blade.mvc.http.session.SessionManager;
 import io.netty.util.concurrent.FastThreadLocal;
+import lombok.var;
+
+import java.util.Optional;
 
 /**
  * Blade Web Context
@@ -26,7 +46,7 @@ public class WebContext {
     private static Blade blade;
 
     /**
-     * ContextPath, are currently /
+     * ContextPath, default is "/"
      */
     private static String contextPath;
 
@@ -76,7 +96,7 @@ public class WebContext {
      * @return Request instance
      */
     public static Request request() {
-        WebContext webContext = get();
+        var webContext = get();
         return null != webContext ? webContext.request : null;
     }
 
@@ -86,7 +106,7 @@ public class WebContext {
      * @return Response instance
      */
     public static Response response() {
-        WebContext webContext = get();
+        var webContext = get();
         return null != webContext ? webContext.response : null;
     }
 
@@ -110,7 +130,7 @@ public class WebContext {
         return blade;
     }
 
-    public static SessionManager sessionManager(){
+    public static SessionManager sessionManager() {
         return null != blade() ? blade().sessionManager() : null;
     }
 
@@ -121,6 +141,36 @@ public class WebContext {
      */
     public static String contextPath() {
         return contextPath;
+    }
+
+    public static void clean() {
+        fastThreadLocal.remove();
+        blade = null;
+    }
+
+    public Environment environment() {
+        return blade().environment();
+    }
+
+    /**
+     * Get application environment information.
+     *
+     * @param key environment key
+     * @return environment optional value
+     */
+    public Optional<String> env(String key) {
+        return blade().env(key);
+    }
+
+    /**
+     * Get application environment information.
+     *
+     * @param key          environment key
+     * @param defaultValue default value, if value is null
+     * @return environment optional value
+     */
+    public String env(String key, String defaultValue) {
+        return blade().env(key, defaultValue);
     }
 
 }

@@ -1,11 +1,26 @@
+/**
+ * Copyright (c) 2017, biezhi 王爵 (biezhi.me@gmail.com)
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.blade.kit;
 
-import lombok.NoArgsConstructor;
+import lombok.experimental.UtilityClass;
 
 import java.io.*;
 
-@NoArgsConstructor
-public final class ConvertKit {
+@UtilityClass
+public class ConvertKit {
 
     /**
      * Hex Digits
@@ -158,6 +173,27 @@ public final class ConvertKit {
             return String.format("%.3fMB", (double) byteNum / MemoryConst.MB);
         } else {
             return String.format("%.3fGB", (double) byteNum / MemoryConst.GB);
+        }
+    }
+
+    /**
+     * 字节数转合适内存大小
+     * <p>保留3位小数</p>
+     *
+     * @param byteNum 字节数
+     * @return 合适内存大小
+     */
+    public static String byte2FitMemoryString(final long byteNum) {
+        if (byteNum < 0) {
+            return "shouldn't be less than zero!";
+        } else if (byteNum < MemoryConst.KB) {
+            return String.format("%d B", byteNum);
+        } else if (byteNum < MemoryConst.MB) {
+            return String.format("%d KB", byteNum / MemoryConst.KB);
+        } else if (byteNum < MemoryConst.GB) {
+            return String.format("%d MB", byteNum / MemoryConst.MB);
+        } else {
+            return String.format("%d GB", byteNum / MemoryConst.GB);
         }
     }
 

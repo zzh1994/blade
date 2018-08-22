@@ -11,10 +11,7 @@ import java.lang.reflect.ParameterizedType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 public class BeanSerializer {
@@ -24,7 +21,11 @@ public class BeanSerializer {
             return null;
         }
 
-        if (ReflectKit.isPrimitive(bean) || bean instanceof Number || bean instanceof Date
+        if (bean instanceof String) {
+            return bean.toString().replaceAll("\"", "\\\\\"");
+        }
+
+        if (ReflectKit.isBasicType(bean.getClass()) || bean instanceof Number || bean instanceof Date
                 || bean instanceof LocalDate || bean instanceof LocalDateTime) {
             return bean;
         }
@@ -269,10 +270,23 @@ public class BeanSerializer {
                     if (null != jsonFormat) {
                         switch (jsonFormat.type()) {
                             case DATE_PATTEN:
-                                value = DateKit.toDateTime(value.toString(), jsonFormat.value());
+                                if (Date.class.equals(clazz)) {
+                                    value = DateKit.toDateTime(value.toString(), jsonFormat.value());
+                                } else if (LocalDate.class.equals(clazz)) {
+                                    value = DateKit.toLocalDate(value.toString(), jsonFormat.value());
+                                } else if (LocalDateTime.class.equals(clazz)) {
+                                    value = DateKit.toLocalDateTime(value.toString(), jsonFormat.value());
+                                }
                                 break;
                             case BIGDECIMAL_KEEP:
-                                value = new BigDecimal(value.toString()).setScale(Integer.parseInt(jsonFormat.value()));
+                                BigDecimal decimal = new BigDecimal(value.toString()).setScale(Integer.parseInt(jsonFormat.value()));
+                                if (BigDecimal.class.equals(clazz)) {
+                                    value = decimal;
+                                } else if (Double.class.equals(clazz) || double.class.equals(clazz)) {
+                                    value = decimal.doubleValue();
+                                } else if (Float.class.equals(clazz) || float.class.equals(clazz)) {
+                                    value = decimal.floatValue();
+                                }
                                 break;
                             default:
                                 break;
@@ -289,6 +303,12 @@ public class BeanSerializer {
     }
 
     public static <T, A> Collection<T> deserialize(Class<? extends Collection> klass, Class<T> genericType, A[] array) throws Exception {
+        if (klass.equals(List.class)) {
+            klass = ArrayList.class;
+        }
+        if (klass.equals(Set.class)) {
+            klass = HashSet.class;
+        }
         Collection collection = klass.newInstance();
         for (int i = 0; i < array.length; ++i)
             collection.add(deserialize(genericType, array[i]));
@@ -299,11 +319,11 @@ public class BeanSerializer {
         return deserialize(klass, genericType, array.toArray());
     }
 
-    public static <T> T[] deserialize(Class<T> componentType, Collection array) throws Exception {
+    public static <T> T[] deserialize(Class<T> componentType, Collection array) {
         return deserialize(componentType, array.toArray());
     }
 
-    public static <T, A> T[] deserialize(Class<T> componentType, A[] array) throws Exception {
+    public static <T, A> T[] deserialize(Class<T> componentType, A[] array) {
         T[] collection = (T[]) (Array.newInstance(componentType, array.length));
         for (int i = 0; i < array.length; ++i)
             collection[i] = deserialize(componentType, array[i]);
@@ -312,7 +332,10 @@ public class BeanSerializer {
 
     public static <T> T deserialize(Class<T> klass, Object object) {
         try {
-            if (ReflectKit.isPrimitive(object)) {
+            if (null == object) {
+                return null;
+            }
+            if (ReflectKit.isBasicType(object)) {
                 return (T) ReflectKit.convert(klass, object.toString());
             } else if (object instanceof Map) {
                 if (Map.class.isAssignableFrom(klass)) {
