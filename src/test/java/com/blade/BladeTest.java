@@ -23,6 +23,7 @@ import java.net.Socket;
 import java.util.List;
 
 import static com.blade.mvc.Const.*;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -33,10 +34,10 @@ import static org.mockito.Mockito.mock;
  */
 public class BladeTest extends BaseTestCase {
 
-    @Test
-    public void testRouteCode() throws Exception {
-        Blade blade = Blade.me();
+    private Blade blade = Blade.of();
 
+    @Test
+    public void testRouteCode() {
         RouteHandler routeHandler = mock(RouteHandler.class);
         blade.get("/", routeHandler);
         blade.post("/", routeHandler);
@@ -57,11 +58,11 @@ public class BladeTest extends BaseTestCase {
 
     @Test
     public void testListen() throws Exception {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.listen(9001).start().await();
         try {
             int code = Unirest.get("http://127.0.0.1:9001").asString().getStatus();
-            Assert.assertEquals(404, code);
+            assertEquals(404, code);
         } finally {
             blade.stop();
             try {
@@ -74,117 +75,122 @@ public class BladeTest extends BaseTestCase {
 
     @Test
     public void testListenAddress() throws Exception {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.listen("localhost", 9002).start().await();
         try {
             int code = Unirest.get("http://localhost:9002/").asString().getStatus();
-            Assert.assertEquals(404, code);
+            assertEquals(404, code);
         } finally {
             blade.stop();
-            try {
-                new Socket("localhost", 9002);
-                Assert.fail("Server is still running");
-            } catch (ConnectException e) {
-            }
         }
     }
 
     @Test
     public void testStart() {
-        Blade.me().start(Hello.class, null);
+        String[] args  = null;
+        Blade    start = Blade.of().start(Hello.class, args);
+        start.stop();
     }
 
     @Test
     public void testAppName() {
-        Blade  blade     = Blade.me();
+        Blade  blade     = Blade.of();
         String anyString = StringKit.rand(10);
         blade.appName(anyString);
-        Assert.assertEquals(anyString, blade.environment().getOrNull(ENV_KEY_APP_NAME));
+        assertEquals(anyString, blade.environment().getOrNull(ENV_KEY_APP_NAME));
     }
 
     @Test
     public void testStartedEvent() {
-        Blade         blade    = Blade.me();
+        Blade         blade    = Blade.of();
         EventListener listener = e1 -> System.out.println("Server started.");
         blade.event(EventType.SERVER_STARTED, listener);
     }
 
     @Test
     public void testTemplate() {
-        Blade          blade          = Blade.me();
+        Blade          blade          = Blade.of();
         TemplateEngine templateEngine = mock(TemplateEngine.class);
         blade.templateEngine(templateEngine);
-        Assert.assertEquals(templateEngine, blade.templateEngine());
+        assertEquals(templateEngine, blade.templateEngine());
     }
 
     @Test
     public void testRegister() {
-        Blade                blade  = Blade.me();
+        Blade                blade  = Blade.of();
         BladeClassDefineType object = new BladeClassDefineType();
         blade.register(object);
-        Assert.assertEquals(object, blade.ioc().getBean(BladeClassDefineType.class));
+        assertEquals(object, blade.ioc().getBean(BladeClassDefineType.class));
     }
 
     @Test
     public void testAddStatics() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.addStatics("/assets/", "/public");
 
-        Assert.assertEquals(7, blade.getStatics().size());
-        Assert.assertEquals(Boolean.TRUE, blade.getStatics().contains("/assets/"));
-        Assert.assertEquals(Boolean.FALSE, blade.getStatics().contains("/hello/"));
+        assertEquals(7, blade.getStatics().size());
+        assertEquals(Boolean.TRUE, blade.getStatics().contains("/assets/"));
+        assertEquals(Boolean.FALSE, blade.getStatics().contains("/hello/"));
     }
 
     @Test
-    public void testBootConf(){
-        Blade blade = Blade.me();
-        blade.bootConf("app2.properties");
-        Assert.assertEquals("app2.properties", blade.environment().getOrNull(ENV_KEY_BOOT_CONF));
+    public void testBootConf() {
+        Blade blade = Blade.of();
+        String bootConf = blade.bootConf("application2.properties").environment().getOrNull(ENV_KEY_BOOT_CONF);
+        assertEquals("application2.properties", bootConf);
     }
 
     @Test
-    public void testEnv(){
-        Environment environment = Environment.empty();
-        environment.add("hello", "world");
-        Environment environment2 = Blade.me().environment(environment).environment();
-        Assert.assertEquals(environment, environment2);
+    public void testEnv() {
+        Environment env = Environment.empty();
+        env.add("hello", "world");
+
+        Environment environment2 = Blade.of().environment().load(env);
+
+        assertEquals(env, environment2);
+
+        String value = Blade.of().env("blade", "2.0.9");
+        assertEquals("2.0.9", value);
+
+        assertEquals(false, Blade.of().env("blade").isPresent());
+
     }
 
     @Test
-    public void testUse(){
-        Blade         blade      = Blade.me().use(new CsrfMiddleware());
+    public void testUse() {
+        Blade         blade      = Blade.of().use(new CsrfMiddleware());
         List<WebHook> middleware = blade.middleware();
         Assert.assertNotNull(middleware);
-        Assert.assertEquals(1, middleware.size());
+        assertEquals(1, middleware.size());
     }
 
     @Test
-    public void testSessionType(){
-        Assert.assertEquals(HttpSession.class, Blade.me().sessionType());
-        Blade.me().sessionType(HttpSession.class);
+    public void testSessionType() {
+        assertEquals(HttpSession.class, Blade.of().sessionType());
+        Blade.of().sessionType(HttpSession.class);
     }
 
     @Test
-    public void testOnStarted(){
-        Blade.me().onStarted(blade -> System.out.println("On started.."));
+    public void testOnStarted() {
+        Blade.of().onStarted(blade -> System.out.println("On started.."));
     }
 
     @Test
-    public void testDisableSession(){
-        Blade blade = Blade.me().disableSession();
+    public void testDisableSession() {
+        Blade blade = Blade.of().disableSession();
         Assert.assertNull(blade.sessionManager());
     }
 
     @Test
-    public void testWatchEnvChange(){
-         Environment environment = Blade.me().watchEnvChange(false).environment();
-         Assert.assertEquals(Boolean.FALSE, environment.getBooleanOrNull(ENV_KEY_APP_WATCH_ENV));
+    public void testWatchEnvChange() {
+        Environment environment = Blade.of().watchEnvChange(false).environment();
+        assertEquals(Boolean.FALSE, environment.getBooleanOrNull(ENV_KEY_APP_WATCH_ENV));
     }
 
     @Test
-    public void testWebSocket(){
-        Assert.assertNull(Blade.me().webSocketHandler());
-        Blade blade = Blade.me().webSocket("/", new WebSocketHandler() {
+    public void testWebSocket() {
+        Assert.assertNull(Blade.of().webSocketHandler());
+        Blade blade = Blade.of().webSocket("/", new WebSocketHandler() {
             @Override
             public void onConnect(WebSocketContext ctx) {
                 System.out.println("on connect.");
@@ -204,62 +210,62 @@ public class BladeTest extends BaseTestCase {
     }
 
     @Test
-    public void testBannerText(){
-        Blade blade = Blade.me().bannerText("qq");
-        Assert.assertEquals("qq", blade.bannerText());
+    public void testBannerText() {
+        Blade blade = Blade.of().bannerText("qq");
+        assertEquals("qq", blade.bannerText());
     }
 
     @Test
-    public void testThreadName(){
-        Blade.me().threadName("-0-");
+    public void testThreadName() {
+        Blade.of().threadName("-0-");
     }
 
     @Test
     public void testEnableCors() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.enableCors(true);
-        Assert.assertEquals(Boolean.TRUE, blade.environment().getBooleanOrNull(ENV_KEY_CORS_ENABLE));
+        assertEquals(Boolean.TRUE, blade.environment().getBooleanOrNull(ENV_KEY_CORS_ENABLE));
     }
 
     @Test
     public void testShowFileList() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.showFileList(false);
-        Assert.assertEquals(Boolean.FALSE, blade.environment().getBooleanOrNull(ENV_KEY_STATIC_LIST));
+        assertEquals(Boolean.FALSE, blade.environment().getBooleanOrNull(ENV_KEY_STATIC_LIST));
     }
 
     @Test
     public void testGZIP() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.gzip(true);
-        Assert.assertEquals(Boolean.TRUE, blade.environment().getBooleanOrNull(ENV_KEY_GZIP_ENABLE));
+        assertEquals(Boolean.TRUE, blade.environment().getBooleanOrNull(ENV_KEY_GZIP_ENABLE));
     }
 
     @Test
     public void testGetBean() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.register("hello world");
 
         String str = blade.getBean(String.class);
         Assert.assertNotNull(str);
-        Assert.assertEquals("hello world", str);
+        assertEquals("hello world", str);
     }
 
     @Test
     public void testExceptionHandler() {
-        Blade            blade            = Blade.me();
+        Blade            blade            = Blade.of();
         ExceptionHandler exceptionHandler = mock(ExceptionHandler.class);
 
         blade.exceptionHandler(exceptionHandler);
 
-        Assert.assertEquals(exceptionHandler, blade.exceptionHandler());
+        assertEquals(exceptionHandler, blade.exceptionHandler());
     }
 
     @Test
     public void testDevMode() {
-        Blade blade = Blade.me();
+        Blade blade = Blade.of();
         blade.devMode(false);
-        Assert.assertEquals(Boolean.FALSE, blade.devMode());
+        assertEquals(Boolean.FALSE, blade.devMode());
     }
 
 

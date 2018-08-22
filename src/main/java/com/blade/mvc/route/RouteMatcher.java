@@ -1,11 +1,10 @@
 package com.blade.mvc.route;
 
 import com.blade.ioc.annotation.Order;
-import com.blade.kit.Assert;
-import com.blade.kit.BladeKit;
-import com.blade.kit.PathKit;
-import com.blade.kit.ReflectKit;
+import com.blade.kit.*;
+import com.blade.mvc.RouteContext;
 import com.blade.mvc.handler.RouteHandler;
+import com.blade.mvc.handler.RouteHandler0;
 import com.blade.mvc.hook.Signature;
 import com.blade.mvc.hook.WebHook;
 import com.blade.mvc.http.HttpMethod;
@@ -23,6 +22,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.blade.kit.BladeKit.logAddRoute;
+import static com.blade.kit.BladeKit.logWebSocket;
+
 /**
  * Default Route Matcher
  *
@@ -32,8 +34,7 @@ import java.util.stream.Stream;
 @Slf4j
 public class RouteMatcher {
 
-    private static final Pattern PATH_VARIABLE_PATTERN = Pattern.compile(":(\\w+)");
-    private static final String  PATH_VARIABLE_REPLACE = "([^/]+)";
+    private static final Pattern PATH_VARIABLE_PATTERN = Pattern.compile("/([^:/]*):([^/]+)");
     private static final String  METHOD_NAME           = "handle";
 
     // Storage URL and route
@@ -49,9 +50,18 @@ public class RouteMatcher {
     private Map<HttpMethod, Integer>                            indexes            = new HashMap<>();
     private Map<HttpMethod, StringBuilder>                      patternBuilders    = new HashMap<>();
 
-    private Route addRoute(HttpMethod httpMethod, String path, RouteHandler handler, String methodName) throws NoSuchMethodException {
+    private List<String> webSockets = new ArrayList<>(4);
+
+    @Deprecated
+    private Route addRoute(HttpMethod httpMethod, String path, RouteHandler0 handler, String methodName) throws NoSuchMethodException {
         Class<?> handleType = handler.getClass();
         Method   method     = handleType.getMethod(methodName, Request.class, Response.class);
+        return addRoute(httpMethod, path, handler, RouteHandler0.class, method);
+    }
+
+    private Route addRoute(HttpMethod httpMethod, String path, RouteHandler handler, String methodName) throws NoSuchMethodException {
+        Class<?> handleType = handler.getClass();
+        Method   method     = handleType.getMethod(methodName, RouteContext.class);
         return addRoute(httpMethod, path, handler, RouteHandler.class, method);
     }
 
@@ -96,6 +106,16 @@ public class RouteMatcher {
         return route;
     }
 
+    @Deprecated
+    public Route addRoute(String path, RouteHandler0 handler, HttpMethod httpMethod) {
+        try {
+            return addRoute(httpMethod, path, handler, METHOD_NAME);
+        } catch (Exception e) {
+            log.error("", e);
+        }
+        return null;
+    }
+
     public Route addRoute(String path, RouteHandler handler, HttpMethod httpMethod) {
         try {
             return addRoute(httpMethod, path, handler, METHOD_NAME);
@@ -138,7 +158,7 @@ public class RouteMatcher {
         }
     }
 
-    public Route lookupRoute(String httpMethod, String path) throws Exception {
+    public Route lookupRoute(String httpMethod, String path) {
         path = parsePath(path);
         String routeKey = path + '#' + httpMethod.toUpperCase();
         Route  route    = staticRoutes.get(routeKey);
@@ -154,6 +174,12 @@ public class RouteMatcher {
         HttpMethod          requestMethod = HttpMethod.valueOf(httpMethod);
         try {
             Pattern pattern = regexRoutePatterns.get(requestMethod);
+            if (null == pattern) {
+                pattern = regexRoutePatterns.get(HttpMethod.ALL);
+                if (null != pattern) {
+                    requestMethod = HttpMethod.ALL;
+                }
+            }
             if (null == pattern) {
                 return null;
             }
@@ -186,7 +212,8 @@ public class RouteMatcher {
                 String uriVariable;
                 int    j = 0;
                 while (++i <= matcher.groupCount() && (uriVariable = matcher.group(i)) != null) {
-                    uriVariables.put(mappingInfo.getVariableNames().get(j++), uriVariable);
+                    String pathVariable = cleanPathVariable(mappingInfo.getVariableNames().get(j++));
+                    uriVariables.put(pathVariable, uriVariable);
                 }
                 route.setPathParams(uriVariables);
                 log.trace("lookup path: " + path + " uri variables: " + uriVariables);
@@ -197,18 +224,21 @@ public class RouteMatcher {
         }
     }
 
+    private String cleanPathVariable(String pathVariable) {
+        if (pathVariable.contains(".")) {
+            return pathVariable.substring(0, pathVariable.indexOf('.'));
+        }
+        return pathVariable;
+    }
+
     public boolean hasBeforeHook() {
         return hooks.values().stream()
-                .flatMap(Collection::stream)
-                .filter(route -> route.getHttpMethod().equals(HttpMethod.BEFORE))
-                .count() > 0;
+                .flatMap(Collection::stream).anyMatch(route -> route.getHttpMethod().equals(HttpMethod.BEFORE));
     }
 
     public boolean hasAfterHook() {
         return hooks.values().stream()
-                .flatMap(Collection::stream)
-                .filter(route -> route.getHttpMethod().equals(HttpMethod.AFTER))
-                .count() > 0;
+                .flatMap(Collection::stream).anyMatch(route -> route.getHttpMethod().equals(HttpMethod.AFTER));
     }
 
     /**
@@ -289,8 +319,8 @@ public class RouteMatcher {
             URI uri = new URI(path);
             return uri.getPath();
         } catch (URISyntaxException e) {
-            log.error("parse [" + path + "] error", e);
-            return null;
+            //log.error("parse [" + path + "] error", e);
+            return path;
         }
     }
 
@@ -298,8 +328,8 @@ public class RouteMatcher {
      * register route to container
      */
     public void register() {
-        routes.values().forEach(route -> log.info("Add route => {}", route));
-        hooks.values().forEach(route -> log.info("Add hook  => {}", route));
+        routes.values().forEach(route -> logAddRoute(log, route));
+        hooks.values().stream().flatMap(Collection::stream).forEach(route -> logAddRoute(log, route));
 
         Stream.of(routes.values(), hooks.values().stream().findAny().orElse(new ArrayList<>()))
                 .flatMap(Collection::stream).forEach(this::registerRoute);
@@ -314,6 +344,8 @@ public class RouteMatcher {
                     log.debug("Fast Route Method: {}, regex: {}", httpMethod, patternBuilder);
                     regexRoutePatterns.put(httpMethod, Pattern.compile(patternBuilder.toString()));
                 });
+
+        webSockets.forEach(path -> logWebSocket(log, path));
     }
 
     private void registerRoute(Route route) {
@@ -328,8 +360,16 @@ public class RouteMatcher {
             if (!find) {
                 find = true;
             }
-            String group = matcher.group(0);
-            uriVariableNames.add(group.substring(1));   // {id} -> id
+            String regexName  = matcher.group(1);
+            String regexValue = matcher.group(2);
+
+            // just a simple path param
+            if (StringKit.isBlank(regexName)) {
+                uriVariableNames.add(regexValue);
+            } else {
+                //regex path param
+                uriVariableNames.add(regexName);
+            }
         }
         HttpMethod httpMethod = route.getHttpMethod();
         if (find || BladeKit.isWebHook(httpMethod)) {
@@ -341,13 +381,27 @@ public class RouteMatcher {
             int i = indexes.get(httpMethod);
             regexRoutes.get(httpMethod).put(i, new FastRouteMappingInfo(route, uriVariableNames));
             indexes.put(httpMethod, i + uriVariableNames.size() + 1);
-            if (matcher != null) {
-                patternBuilders.get(httpMethod).append("(").append(matcher.replaceAll(PATH_VARIABLE_REPLACE)).append(")|");
-            }
+            patternBuilders.get(httpMethod).append(new PathRegexBuilder().parsePath(path));
         } else {
             String routeKey = path + '#' + httpMethod.toString();
             staticRoutes.putIfAbsent(routeKey, route);
         }
+    }
+
+    public Map<String, Route> getRoutes() {
+        return routes;
+    }
+
+    public List<String> getWebSockets() {
+        return webSockets;
+    }
+
+    public Map<String, List<Route>> getHooks() {
+        return hooks;
+    }
+
+    public Map<String, Route> getStaticRoutes() {
+        return staticRoutes;
     }
 
     public void clear() {
@@ -367,6 +421,10 @@ public class RouteMatcher {
             Method method = ReflectKit.getMethod(WebHook.class, "before", Signature.class);
             return new Route(HttpMethod.BEFORE, "/.*", webHook, WebHook.class, method);
         }).collect(Collectors.toList());
+    }
+
+    public void addWebSocket(String path) {
+        webSockets.add(path);
     }
 
     private class FastRouteMappingInfo {

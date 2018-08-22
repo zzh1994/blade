@@ -1,6 +1,21 @@
+/**
+ * Copyright (c) 2017, biezhi 王爵 (biezhi.me@gmail.com)
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.blade.kit;
 
-import lombok.NoArgsConstructor;
+import lombok.experimental.UtilityClass;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
@@ -19,10 +34,13 @@ import static com.blade.kit.ConvertKit.hex2Dec;
  * @author <a href="mailto:biezhi.me@gmail.com" target="_blank">biezhi</a>
  * @since 1.0
  */
-@NoArgsConstructor
+@UtilityClass
 public class EncryptKit {
 
     private static final char[] HEX_DIGITS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+    // Define the BCrypt workload to use when generating password hashes. 10-31 is a valid value.
+    private static final int workload = 12;
 
     /**
      * 3DES转变
@@ -30,7 +48,7 @@ public class EncryptKit {
      * <p>加密模式有：电子密码本模式ECB、加密块链模式CBC、加密反馈模式CFB、输出反馈模式OFB</p>
      * <p>填充方式有：NoPadding、ZerosPadding、PKCS5Padding</p>
      */
-    private static final  String TripleDES_Transformation = "DESede/ECB/NoPadding";
+    private static final String TripleDES_Transformation = "DESede/ECB/NoPadding";
     private static final String TripleDES_Algorithm      = "DESede";
 
     /**
@@ -39,7 +57,7 @@ public class EncryptKit {
      * <p>加密模式有：电子密码本模式ECB、加密块链模式CBC、加密反馈模式CFB、输出反馈模式OFB</p>
      * <p>填充方式有：NoPadding、ZerosPadding、PKCS5Padding</p>
      */
-    private static        String AES_Transformation = "AES/ECB/NoPadding";
+    private static       String AES_Transformation = "AES/ECB/NoPadding";
     private static final String AES_Algorithm      = "AES";
 
     /**

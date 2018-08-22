@@ -1,9 +1,12 @@
 package com.blade.kit.json;
 
+import com.blade.kit.DateKit;
 import com.blade.kit.ReflectKit;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -23,11 +26,20 @@ public class SampleJsonSerializer {
                     .replace("\t", "\\t").replace("\r", "\\r")
                     .replace("\f", "\\f").replace("\n", "\\n") + '\"';
         }
-        if (ReflectKit.isPrimitive(object)) {
+        if (ReflectKit.isBasicType(object)) {
             return object.toString();
         }
-        if (object instanceof Date || object instanceof BigDecimal) {
+        if (object instanceof BigDecimal) {
             return serialize(object.toString());
+        }
+        if(object instanceof Date){
+            return DateKit.toString((Date) object, "yyyy-MM-dd HH:mm:ss");
+        }
+        if(object instanceof LocalDate){
+            return DateKit.toString((LocalDate) object, "yyyy-MM-dd");
+        }
+        if(object instanceof LocalDateTime){
+            return DateKit.toString((LocalDateTime) object, "yyyy-MM-dd HH:mm:ss");
         }
         if (object instanceof Map) {
             StringBuilder sb = new StringBuilder();

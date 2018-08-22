@@ -22,6 +22,14 @@ public class StringKitTest {
 
         Assert.assertEquals(false, StringKit.isNotBlank(""));
         Assert.assertEquals(false, StringKit.isNotBlank(null));
+
+
+        Assert.assertEquals(false,StringKit.isNotBlank("a","b","  "));
+        Assert.assertEquals(false,StringKit.isNotBlank("a","b",null));
+
+        Assert.assertEquals(true,StringKit.isNotBlank("a","b","c"));
+        Assert.assertEquals(true,StringKit.isNotBlank("abc","d ef","gh i"));
+
     }
 
     @Test
@@ -82,6 +90,40 @@ public class StringKitTest {
     public void testEquals(){
         Assert.assertEquals(true, StringKit.equals("a", "a"));
         Assert.assertEquals(false, StringKit.equals("a", "b"));
+    }
+
+    @Test
+    public void testPadRight(){
+        String a = "hello";
+        String b = StringKit.padRight(a, 10);
+        Assert.assertEquals("hello     ", b);
+    }
+
+    @Test
+    public void testPadLeft(){
+        String a = "hello";
+        String b = StringKit.padLeft(a, 10);
+        Assert.assertEquals("     hello", b);
+    }
+
+    @Test
+    public void testToUnderlineName(){
+        String a = "userName";
+        Assert.assertEquals("user_name", StringKit.toUnderlineName(a));
+    }
+
+    @Test
+    public void testToCamelCase(){
+        String a = "user_name";
+        Assert.assertEquals("userName", StringKit.toCamelCase(a));
+    }
+
+    @Test
+    public void testToCapitalizeCamelCase(){
+        String a = "user_name";
+        String b = "user_name_age";
+        Assert.assertEquals("UserName", StringKit.toCapitalizeCamelCase(a));
+        Assert.assertEquals("UserNameAge", StringKit.toCapitalizeCamelCase(b));
     }
 
 }

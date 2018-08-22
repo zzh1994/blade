@@ -1,21 +1,18 @@
 package com.blade.mvc.http;
 
+import com.blade.exception.BladeException;
 import com.blade.kit.JsonKit;
+import com.blade.kit.StringKit;
 import com.blade.mvc.Const;
 import com.blade.mvc.WebContext;
 import com.blade.mvc.ui.ModelAndView;
 import com.blade.mvc.wrapper.OutputStreamWrapper;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpVersion;
-import io.netty.util.CharsetUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Http Response
@@ -73,7 +70,7 @@ public interface Response {
      * @param contentType content type
      * @return Return Response
      */
-    Response contentType(CharSequence contentType);
+    Response contentType(String contentType);
 
     /**
      * Get current response headers: contentType
@@ -96,7 +93,7 @@ public interface Response {
      * @param value Header Value
      * @return Return Response
      */
-    Response header(CharSequence name, CharSequence value);
+    Response header(String name, String value);
 
     /**
      * Get current response cookies
@@ -104,6 +101,8 @@ public interface Response {
      * @return return response cookies
      */
     Map<String, String> cookies();
+
+    Set<io.netty.handler.codec.http.cookie.Cookie> cookiesRaw();
 
     /**
      * add raw response cookie
@@ -114,7 +113,7 @@ public interface Response {
     Response cookie(Cookie cookie);
 
     /**
-     * add Cookie
+     * Add Cookie
      *
      * @param name  Cookie Name
      * @param value Cookie Value
@@ -170,10 +169,8 @@ public interface Response {
      */
     default void text(String text) {
         if (null == text) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), Unpooled.wrappedBuffer(text.getBytes(CharsetUtil.UTF_8)), false);
-        if (null == this.contentType())
-            this.contentType(Const.CONTENT_TYPE_TEXT);
-        this.send(response);
+        this.contentType(Const.CONTENT_TYPE_TEXT);
+        this.body(text);
     }
 
     /**
@@ -183,10 +180,8 @@ public interface Response {
      */
     default void html(String html) {
         if (null == html) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), Unpooled.wrappedBuffer(html.getBytes(CharsetUtil.UTF_8)), false);
-        if (null == this.contentType())
-            this.contentType(Const.CONTENT_TYPE_HTML);
-        this.send(response);
+        this.contentType(Const.CONTENT_TYPE_HTML);
+        this.body(html);
     }
 
     /**
@@ -196,11 +191,12 @@ public interface Response {
      */
     default void json(String json) {
         if (null == json) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), Unpooled.wrappedBuffer(json.getBytes(CharsetUtil.UTF_8)), false);
-        if (null == this.contentType() && !WebContext.request().isIE()) {
+        if (Objects.requireNonNull(WebContext.request()).isIE()) {
+            this.contentType(Const.CONTENT_TYPE_HTML);
+        } else {
             this.contentType(Const.CONTENT_TYPE_JSON);
         }
-        this.send(response);
+        this.body(json);
     }
 
     /**
@@ -214,37 +210,20 @@ public interface Response {
     }
 
     /**
-     * send body to client
+     * Send a string response to the client
      *
-     * @param data body string
+     * @param body string content
      */
-    default void body(String data) {
-        if (null == data) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), Unpooled.wrappedBuffer(data.getBytes(CharsetUtil.UTF_8)), false);
-        this.send(response);
+    default void body(String body) {
+        this.body(new StringBody(body));
     }
 
     /**
-     * Send response body by byte array.
+     * Send body to client
      *
-     * @param data byte array data
+     * @param body {@link Body}
      */
-    default void body(byte[] data) {
-        if (null == data) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), Unpooled.wrappedBuffer(data), false);
-        this.send(response);
-    }
-
-    /**
-     * Send response body by ByteBuf.
-     *
-     * @param byteBuf ByteBuf data
-     */
-    default void body(ByteBuf byteBuf) {
-        if (null == byteBuf) return;
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(statusCode()), byteBuf, false);
-        this.send(response);
-    }
+    Response body(Body body);
 
     /**
      * download some file to client
@@ -261,21 +240,24 @@ public interface Response {
      * @throws IOException throw IOException
      * @since 2.0.1-alpha3
      */
+    @Deprecated
     OutputStreamWrapper outputStream() throws IOException;
 
     /**
-     * Render view
+     * Render view, can be modified after WebHook
      *
      * @param view view page
      * @return Return Response
      */
     default void render(String view) {
-        if (null == view) return;
+        if (StringKit.isEmpty(view)) {
+            throw new BladeException(500, "Render view not empty.");
+        }
         this.render(new ModelAndView(view));
     }
 
     /**
-     * Render view And Setting Data
+     * Render view And Setting Data, can be modified after WebHook
      *
      * @param modelAndView ModelAndView object
      * @return Return Response
@@ -290,17 +272,11 @@ public interface Response {
     void redirect(String newUri);
 
     /**
-     * Judge whether the current response has been submitted to the client
-     *
-     * @return return current response is commit
+     * @return Returns the currently set view, returning an empty Optional type when not set
+     * @since 2.0.8
      */
-    boolean isCommit();
+    ModelAndView modelAndView();
 
-    /**
-     * Send response by FullHttpResponse, custom build, please be careful
-     *
-     * @param response FullHttpResponse instance
-     */
-    void send(FullHttpResponse response);
+    Body body();
 
 }

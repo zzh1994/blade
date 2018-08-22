@@ -1,17 +1,21 @@
 package com.blade.mvc.http;
 
+import com.blade.kit.JsonKit;
 import com.blade.kit.StringKit;
 import com.blade.kit.WebKit;
 import com.blade.mvc.WebContext;
+import com.blade.mvc.handler.RouteActionArguments;
 import com.blade.mvc.multipart.FileItem;
 import com.blade.mvc.route.Route;
 import com.blade.server.netty.HttpConst;
 import io.netty.buffer.ByteBuf;
+import io.netty.util.CharsetUtil;
 import lombok.NonNull;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.blade.kit.WebKit.UNKNOWN_MAGIC;
 
@@ -109,7 +113,7 @@ public interface Request {
      */
     default Integer pathInt(@NonNull String name) {
         String val = pathString(name);
-        return StringKit.isNotBlank(val) ? Integer.parseInt(val) : null;
+        return StringKit.isNotEmpty(val) ? Integer.parseInt(val) : null;
     }
 
     /**
@@ -120,7 +124,7 @@ public interface Request {
      */
     default Long pathLong(@NonNull String name) {
         String val = pathString(name);
-        return StringKit.isNotBlank(val) ? Long.parseLong(val) : null;
+        return StringKit.isNotEmpty(val) ? Long.parseLong(val) : null;
     }
 
     /**
@@ -136,6 +140,23 @@ public interface Request {
      * @return Return request query Map
      */
     Map<String, List<String>> parameters();
+
+    /**
+     * Get current request query parameter names
+     *
+     * @return Return request query names
+     * @since 2.0.8-RELEASE
+     */
+    Set<String> parameterNames();
+
+    /**
+     * Get current request query parameter values
+     *
+     * @param paramName param name
+     * @return Return request query values
+     * @since 2.0.8-RELEASE
+     */
+    List<String> parameterValues(String paramName);
 
     /**
      * Get a request parameter
@@ -159,9 +180,7 @@ public interface Request {
      */
     default String query(@NonNull String name, @NonNull String defaultValue) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return value.get();
-        return defaultValue;
+        return value.orElse(defaultValue);
     }
 
     /**
@@ -172,9 +191,7 @@ public interface Request {
      */
     default Optional<Integer> queryInt(@NonNull String name) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Optional.of(Integer.parseInt(value.get()));
-        return Optional.empty();
+        return value.map(Integer::parseInt);
     }
 
     /**
@@ -186,9 +203,7 @@ public interface Request {
      */
     default int queryInt(@NonNull String name, int defaultValue) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Integer.parseInt(value.get());
-        return defaultValue;
+        return value.map(Integer::parseInt).orElse(defaultValue);
     }
 
     /**
@@ -199,9 +214,7 @@ public interface Request {
      */
     default Optional<Long> queryLong(@NonNull String name) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Optional.of(Long.parseLong(value.get()));
-        return Optional.empty();
+        return value.map(Long::parseLong);
     }
 
     /**
@@ -213,9 +226,7 @@ public interface Request {
      */
     default long queryLong(@NonNull String name, long defaultValue) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Long.parseLong(value.get());
-        return defaultValue;
+        return value.map(Long::parseLong).orElse(defaultValue);
     }
 
     /**
@@ -226,9 +237,7 @@ public interface Request {
      */
     default Optional<Double> queryDouble(@NonNull String name) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Optional.of(Double.parseDouble(value.get()));
-        return Optional.empty();
+        return value.map(Double::parseDouble);
     }
 
     /**
@@ -240,9 +249,7 @@ public interface Request {
      */
     default double queryDouble(@NonNull String name, double defaultValue) {
         Optional<String> value = query(name);
-        if (value.isPresent())
-            return Double.parseDouble(value.get());
-        return defaultValue;
+        return value.map(Double::parseDouble).orElse(defaultValue);
     }
 
     /**
@@ -258,6 +265,12 @@ public interface Request {
      * @return Return HttpMethod
      */
     HttpMethod httpMethod();
+
+    /**
+     * @return whether the current request is a compressed request of GZIP
+     * @since 2.0.9.BETA1
+     */
+    boolean useGZIP();
 
     /**
      * Get client ip address
@@ -306,6 +319,28 @@ public interface Request {
      */
     default boolean isAjax() {
         return "XMLHttpRequest".equals(header("x-requested-with"));
+    }
+
+    /**
+     * Determine if this request is a FORM form request
+     * <p>
+     * According to header content-type contains "form"
+     *
+     * @return is form request
+     */
+    default boolean isFormRequest() {
+        return this.header(HttpConst.CONTENT_TYPE_STRING).toLowerCase().contains("form");
+    }
+
+    /**
+     * Determine if this request is a json request
+     * <p>
+     * According to header content-type contains "json"
+     *
+     * @return is json request
+     */
+    default boolean isJsonRequest() {
+        return this.header(HttpConst.CONTENT_TYPE_STRING).toLowerCase().contains("json");
     }
 
     /**
@@ -359,7 +394,7 @@ public interface Request {
     /**
      * Add a cookie to the request
      *
-     * @param cookie
+     * @param cookie cookie raw
      * @return return Request instance
      */
     Request cookie(Cookie cookie);
@@ -378,8 +413,13 @@ public interface Request {
      * @return Return header information
      */
     default String header(@NonNull String name) {
-        String header = headers().getOrDefault(name, "");
-        return StringKit.isBlank(header) ? headers().getOrDefault(name.toLowerCase(), "") : header;
+        String header = "";
+        if (headers().containsKey(name)) {
+            header = headers().get(name);
+        } else if (headers().containsKey(name.toLowerCase())) {
+            header = headers().get(name.toLowerCase());
+        }
+        return header;
     }
 
     /**
@@ -402,6 +442,27 @@ public interface Request {
     boolean keepAlive();
 
     /**
+     * Bind form parameter to model
+     *
+     * @param modelClass model class type
+     * @param <T>
+     */
+    default <T> T bindWithForm(Class<T> modelClass) {
+        return RouteActionArguments.parseModel(modelClass, this, null);
+    }
+
+    /**
+     * Bind body parameter to model
+     *
+     * @param modelClass model class type
+     * @param <T>
+     */
+    default <T> T bindWithBody(Class<T> modelClass) {
+        String json = this.bodyToString();
+        return StringKit.isNotEmpty(json) ? JsonKit.formJson(json, modelClass) : null;
+    }
+
+    /**
      * Get current request attributes
      *
      * @return Return all Attribute in Request
@@ -411,12 +472,12 @@ public interface Request {
     /**
      * Setting Request Attribute
      *
-     * @param name  Parameter name
-     * @param value Parameter Value
+     * @param name  attribute name
+     * @param value attribute Value
      * @return set attribute value and return current request instance
      */
     default Request attribute(@NonNull String name, Object value) {
-        if (null != value) attributes().put(name, value);
+        this.attributes().put(name, value);
         return this;
     }
 
@@ -461,6 +522,8 @@ public interface Request {
      *
      * @return return request body to string
      */
-    String bodyToString();
+    default String bodyToString() {
+        return this.body().toString(CharsetUtil.UTF_8);
+    }
 
 }

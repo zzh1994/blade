@@ -52,6 +52,7 @@ public class Route {
      */
     private Method action;
 
+    @Builder.Default
     private int sort = Integer.MAX_VALUE;
 
     /**
@@ -65,6 +66,7 @@ public class Route {
         this.path = PathKit.fixPath(path);
         this.targetType = targetType;
         this.action = action;
+        sort = Integer.MAX_VALUE;
     }
 
     public Route(HttpMethod httpMethod, String path, Object target, Class<?> targetType, Method action) {
@@ -74,6 +76,7 @@ public class Route {
         this.target = target;
         this.targetType = targetType;
         this.action = action;
+        sort = Integer.MAX_VALUE;
     }
 
     /**
@@ -173,6 +176,10 @@ public class Route {
      */
     public void setSort(int sort) {
         this.sort = sort;
+    }
+
+    public String getAllPath() {
+        return this.path + "#" + this.httpMethod.name();
     }
 
     /**

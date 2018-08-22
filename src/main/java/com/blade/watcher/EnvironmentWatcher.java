@@ -1,6 +1,7 @@
 package com.blade.watcher;
 
 import com.blade.Environment;
+import com.blade.event.Event;
 import com.blade.event.EventType;
 import com.blade.mvc.Const;
 import com.blade.mvc.WebContext;
@@ -20,8 +21,11 @@ public class EnvironmentWatcher implements Runnable {
 
     @Override
     public void run() {
-        final Path path = Paths.get(Const.CLASSPATH);
+        if (Const.CLASSPATH.endsWith(".jar")) {
+            return;
+        }
 
+        final Path path = Paths.get(Const.CLASSPATH);
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
 
             path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE);
@@ -49,7 +53,7 @@ public class EnvironmentWatcher implements Runnable {
                         Environment environment = Environment.of("classpath:" + filename.substring(1, filename.length() - 4));
                         WebContext.blade().environment(environment);
                         // notify
-                        WebContext.blade().eventManager().fireEvent(EventType.ENVIRONMENT_CHANGED, environment);
+                        WebContext.blade().eventManager().fireEvent(EventType.ENVIRONMENT_CHANGED, new Event().attribute("environment", environment));
                     }
                 }
                 // reset the keyf

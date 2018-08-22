@@ -39,8 +39,11 @@ If you think this item is good can [star](https://github.com/biezhi/blade/starga
 * [x] High performance, 100 concurrent qps 14w/s
 * [x] Run the `JAR` package to open the web service
 * [x] Streaming API style
+* [x] `CSRF` and `XSS` defense
+* [x] `Basic Auth` and `Authorization`
 * [x] Supports plug-in extensions
 * [x] Support webjars resources
+* [x] Based on `cron` expression of tasks
 * [x] Built-in a variety of commonly used middleware
 * [x] Built-in JSON output
 * [x] JDK8 +
@@ -61,25 +64,23 @@ Create a basic `Maven` project
 <dependency>
     <groupId>com.bladejava</groupId>
     <artifactId>blade-mvc</artifactId>
-    <version>2.0.6-BETA</version>
+    <version>2.0.9.BETA3</version>
 </dependency>
 ```
 
-> Do not create a webapp project, blade is not so much trouble.
+> Do not create a `webapp` project, blade is not so much trouble.
 
 or `Gradle`:
 
 ```sh
-compile 'com.bladejava:blade-mvc:2.0.6-BETA'
+compile 'com.bladejava:blade-mvc:2.0.9.BETA3'
 ```
 
 Write `main` method, try `Hello World`：
 
 ```java
 public static void main(String[] args) {
-    Blade.me().get("/", (req, res) -> {
-        res.text("Hello Blade");
-    }).start();
+    Blade.of().get("/", ctx -> ctx.text("Hello Blade")).start();
 }
 ```
 
@@ -124,7 +125,7 @@ Using browser open http://localhost:9000 so you can see the first `Blade` applic
 ```java
 public static void main(String[] args) {
     // Create Blade，using GET、POST、PUT、DELETE
-    Blade.me()
+    Blade.of()
         .get("/user/21", getting)
         .post("/save", posting)
         .delete("/remove", deleting)
@@ -146,7 +147,7 @@ public class IndexController {
 
     @PostRoute("signin")
     @JSON
-    public RestResponse doSignin(Request request){
+    public RestResponse doSignin(RouteContext ctx){
         // do something
         return RestResponse.ok();
     }
@@ -160,14 +161,14 @@ public class IndexController {
 
 Here is an example:
 
-**By Request**
+**By Context**
 
 ```java
 public static void main(String[] args) {
-    Blade.me().get("/user", ((request, response) -> {
-         Optional<Integer> ageOptional = request.queryInt("age");
-         ageOptional.ifPresent(age -> System.out.println("age is:" + age));
-     })).start();
+    Blade.of().get("/user", ctx -> {
+        Integer age = ctx.queryInt("age");
+        System.out.println("age is:" + age);
+    }).start();
 }
 ```
 
@@ -176,7 +177,7 @@ public static void main(String[] args) {
 ```java
 @PostRoute("/save")
 public void savePerson(@Param String username, @Param Integer age){
-  System.out.println("username is:" + usernam + ", age is:" + age)
+    System.out.println("username is:" + username + ", age is:" + age)
 }
 ```
 
@@ -192,25 +193,25 @@ curl -X POST http://127.0.0.1:9000/save -F username=jack -F age=16
 
 ### Path Parameters
 
-**By Request**
+**By RouteContext**
 
 ```java
 public static void main(String[] args) {
-    Blade blade = Blade.me();
+    Blade blade = Blade.of();
     // Create a route: /user/:uid
-    blade.get("/user/:uid", (request, response) -> {
-		Integer uid = request.pathInt("uid");
-		response.text("uid : " + uid);
-	});
+    blade.get("/user/:uid", ctx -> {
+        Integer uid = ctx.pathInt("uid");
+        ctx.text("uid : " + uid);
+    });
 
     // Create two parameters route
-    blade.get("/users/:uid/post/:pid", (request, response) -> {
-		Integer uid = request.pathInt("uid");
-		Integer pid = request.pathInt("pid");
-		String msg = "uid = " + uid + ", pid = " + pid;
-		response.text(msg);
-	});
-
+    blade.get("/users/:uid/post/:pid", ctx -> {
+        Integer uid = ctx.pathInt("uid");
+        Integer pid = ctx.pathInt("pid");
+        String msg = "uid = " + uid + ", pid = " + pid;
+        ctx.text(msg);
+    });
+    
     // Start blade
     blade.start();
 }
@@ -221,7 +222,7 @@ public static void main(String[] args) {
 ```java
 @GetRoute("/users/:username/:page")
 public void userTopics(@PathParam String username, @PathParam Integer page){
-  System.out.println("username is:" + usernam + ", page is:" + page)
+    System.out.println("username is:" + usernam + ", page is:" + page)
 }
 ```
 
@@ -235,8 +236,8 @@ curl -X GET http://127.0.0.1:9000/users/biezhi/2
 
 ```java
 public static void main(String[] args) {
-    Blade.me().post("/body", ((request, response) -> {
-      System.out.println("body string is:" + request.bodyToString())
+    Blade.of().post("/body", ctx -> {
+        System.out.println("body string is:" + ctx.bodyToString())
     }).start();
 }
 ```
@@ -253,9 +254,9 @@ This is `User` model.
 
 ```java
 public class User {
-  private String username;
-  private Integer age;
-  // getter and setter
+    private String username;
+    private Integer age;
+    // getter and setter
 }
 ```
 
@@ -312,16 +313,16 @@ String version = environment.get("app.version", "0.0.1");;
 
 ## Get Header
 
-**By Request**
+**By Context**
 
 ```java
 @GetRoute("header")
-public void getHeader(Request request){
-  System.out.println("Host => " + request.header("Host"));
-  // get useragent
-  System.out.println("UserAgent => " + request.userAgent());
-  // get client ip
-  System.out.println("Client Address => " + request.address());
+public void getHeader(RouteContext ctx){
+    System.out.println("Host => " + ctx.header("Host"));
+    // get useragent
+    System.out.println("UserAgent => " + ctx.userAgent());
+    // get client ip
+    System.out.println("Client Address => " + ctx.address());
 }
 ```
 
@@ -330,19 +331,18 @@ public void getHeader(Request request){
 ```java
 @GetRoute("header")
 public void getHeader(@HeaderParam String Host){
-  System.out.println("Host => " + Host);
+    System.out.println("Host => " + Host);
 }
 ```
 
 ## Get Cookie
 
-**By Request**
+**By Context**
 
 ```java
 @GetRoute("cookie")
-public void getCookie(Request request){
-  System.out.println("UID => " + request.cookie("UID").get());
-  request.cookie("UID").ifPresent(System.out::println);
+public void getCookie(RouteContext ctx){
+    System.out.println("UID => " + ctx.cookie("UID"));
 }
 ```
 
@@ -351,7 +351,7 @@ public void getCookie(Request request){
 ```java
 @GetRoute("cookie")
 public void getCookie(@CookieParam String UID){
-  System.out.println("Cookie UID => " + UID);
+    System.out.println("Cookie UID => " + UID);
 }
 ```
 
@@ -362,10 +362,10 @@ Blade built a few static resource catalog, as long as you will save the resource
 If you want to customize the static resource URL.
 
 ```java
-Blade.me().addStatics("/mydir");
+Blade.of().addStatics("/mydir");
 ```
 
-Of course you can also specify in the configuration file. `app.properties` (location in classpath)
+Of course you can also specify in the configuration file. `application.properties` (location in classpath)
 
 ```bash
 mvc.statics=/mydir
@@ -401,8 +401,8 @@ public void upload(@MultipartParam FileItem fileItem){
 
 ```java
 public void login(Session session){
-  // if login success
-  session.attribute("login_key", SOME_MODEL);
+    // if login success
+    session.attribute("login_key", SOME_MODEL);
 }
 ```
 
@@ -410,13 +410,13 @@ public void login(Session session){
 
 ### Render JSON
 
-**By Response**
+**By Context**
 
 ```java
 @GetRoute("users/json")
-public void printJSON(Response response){
-  User user = new User("biezhi", 18);
-  response.json(user);
+public void printJSON(RouteContext ctx){
+    User user = new User("biezhi", 18);
+    ctx.json(user);
 }
 ```
 
@@ -428,7 +428,7 @@ This form looks more concise 😶
 @GetRoute("users/json")
 @JSON
 public User printJSON(){
-  return new User("biezhi", 18);
+    return new User("biezhi", 18);
 }
 ```
 
@@ -436,8 +436,8 @@ public User printJSON(){
 
 ```java
 @GetRoute("text")
-public void printText(Response response){
-  response.text("I Love Blade!");
+public void printText(RouteContext ctx){
+    ctx.text("I Love Blade!");
 }
 ```
 
@@ -445,8 +445,8 @@ public void printText(Response response){
 
 ```java
 @GetRoute("html")
-public void printHtml(Response response){
-  response.html("<center><h1>I Love Blade!</h1></center>");
+public void printHtml(RouteContext ctx){
+    ctx.html("<center><h1>I Love Blade!</h1></center>");
 }
 ```
 
@@ -460,11 +460,10 @@ By default, the Blade uses the built-in template engine, which is very simple if
 
 ```java
 public static void main(String[] args) {
-    Blade.me().get("/hello", ((request, response) -> {
-                request.attribute("name", "biezhi");
-                response.render("hello.html");
-            }))
-            .start(Hello.class, args);
+    Blade.of().get("/hello", ctx -> {
+        ctx.attribute("name", "biezhi");
+        ctx.render("hello.html");
+    }).start(Hello.class, args);
 }
 ```
 
@@ -479,7 +478,7 @@ The `hello.html` template
 </head>
 <body>
 
-  <h1>Hello, ${name}</h1>
+    <h1>Hello, ${name}</h1>
 
 </body>
 </html>
@@ -489,14 +488,14 @@ The `hello.html` template
 
 **Config Jetbrick Template**
 
-Create a `BeanProcessor` class
+Create a `BladeLoader` class load some config
 
 ```java
 @Bean
-public class TemplateConfig implements BeanProcessor {
+public class TemplateConfig implements BladeLoader {
 
     @Override
-    public void processor(Blade blade) {
+    public void load(Blade blade) {
         blade.templateEngine(new JetbrickTemplateEngine());
     }
 
@@ -507,12 +506,11 @@ Write some data for the template engine to render
 
 ```java
 public static void main(String[] args) {
-    Blade.me().get("/hello", ((request, response) -> {
-                User user = new User("biezhi", 50);
-                request.attribute("user", user);
-                response.render("hello.html");
-            }))
-            .start(Hello.class, args);
+    Blade.of().get("/hello", ctx -> {
+        User user = new User("biezhi", 50);
+        ctx.attribute("user", user);
+        ctx.render("hello.html");
+    }).start(Hello.class, args);
 }
 ```
 
@@ -527,13 +525,13 @@ The `hello.html` template
 </head>
 <body>
 
-  <h1>Hello, ${user.username}</h1>
+    <h1>Hello, ${user.username}</h1>
 
-  #if(user.age > 18)
-    <p>Good Boy!</p>
-  #else
-    <p>Gooood Baby!</p>
-  #end
+    #if(user.age > 18)
+        <p>Good Boy!</p>
+    #else
+        <p>Gooood Baby!</p>
+    #end
 
 </body>
 </html>
@@ -545,10 +543,8 @@ The `hello.html` template
 
 ```java
 @GetRoute("redirect")
-public void redirectToGithub(Response response){
-
-  response.redirect("https://github.com/biezhi");
-
+public void redirectToGithub(RouteContext ctx){
+    ctx.redirect("https://github.com/biezhi");
 }
 ```
 
@@ -558,11 +554,9 @@ public void redirectToGithub(Response response){
 
 ```java
 @GetRoute("write-cookie")
-public void writeCookie(Response response){
-
-  response.cookie("hello", "world");
-  response.cookie("UID", "22", 3600);
-
+public void writeCookie(RouteContext ctx){
+    ctx.cookie("hello", "world");
+    ctx.cookie("UID", "22", 3600);
 }
 ```
 
@@ -575,7 +569,7 @@ public void writeCookie(Response response){
 ```java
 public static void main(String[] args) {
     // All requests are exported before execution before
-    Blade.me().before("/*", (request, response) -> {
+    Blade.of().before("/*", ctx -> {
         System.out.println("before...");
     }).start();
 }
@@ -589,10 +583,10 @@ Blade using slf4-api as a log interface, the default implementation of a simple 
 private static final Logger log = LoggerFactory.getLogger(Hello.class);
 
 public static void main(String[] args) {
-  log.info("Hello Info, {}", "2017");
-  log.warn("Hello Warn");
-  log.debug("Hello Debug");
-  log.error("Hello Error");
+    log.info("Hello Info, {}", "2017");
+    log.warn("Hello Warn");
+    log.debug("Hello Debug");
+    log.error("Hello Error");
 }
 ```
 
@@ -602,11 +596,11 @@ Blade built a few middleware, when you need Basic certification can be used, of 
 
 ```java
 public static void main(String[] args) {
-  Blade.me().use(new BasicAuthMiddleware()).start();
+    Blade.of().use(new BasicAuthMiddleware()).start();
 }
 ```
 
-Specify the user name and password in the `app.properties` configuration file.
+Specify the user name and password in the `application.properties` configuration file.
 
 ```bash
 http.auth.username=admin
@@ -620,10 +614,10 @@ There are three ways to modify the port, hard coding, configuration files, start
 **Hard Coding**
 
 ```java
-Blade.me().listen(9001).start();
+Blade.of().listen(9001).start();
 ```
 
-**Configuration For `app.properties`**
+**Configuration For `application.properties`**
 
 ```bash
 server.port=9001
@@ -637,7 +631,7 @@ java -jar blade-app.jar --server.port=9001
 
 ## Configuration SSL
 
-**Configuration For `app.properties`**
+**Configuration For `application.properties`**
 
 ```bash
 server.ssl.enable=true
@@ -652,14 +646,14 @@ Blade has already implemented an exception handler by default, and sometimes you
 
 ```java
 @Bean
-public class GolbalExceptionHandler extends DefaultExceptionHandler {
-
+public class GlobalExceptionHandler extends DefaultExceptionHandler {
+    
     @Override
     public void handle(Exception e) {
-        if (e instanceof ValidateException) {
-            ValidateException validateException = (ValidateException) e;
-            String msg = validateException.getErrMsg();
-            WebContext.response().json(RestResponse.fail(msg));
+        if (e instanceof CustomException) {
+            CustomException customException = (CustomException) e;
+            String code = customException.getCode();
+            // do something
         } else {
             super.handle(e);
         }
@@ -680,22 +674,21 @@ How easy it all looks, but the features above are the tip of the iceberg, and th
 
 ## Contact
 
-- Blog:[https://biezhi.me](https://biezhi.me)
+- Twitter: [biezhi](https://twitter.com/biezhii)
 - Mail: biezhi.me@gmail.com
 
-## Contributor
+## Contributors
 
-Thank you very much for the developers to help in the project, if you are willing to contribute, welcome!
+Thanks goes to these wonderful people
 
-- [mfarid](https://github.com/mfarid)
-- [daimajia](https://github.com/daimajia)
-- [shenjie1993](https://github.com/shenjie1993)
-- [sumory](https://github.com/sumory)
-- [udaykadaboina](https://github.com/udaykadaboina)
-- [SyedWasiHaider](https://github.com/SyedWasiHaider)
-- [Awakens](https://github.com/Awakens)
-- [shellac](https://github.com/shellac)
-- [SudarAbisheck](https://github.com/SudarAbisheck)
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore -->
+| [<img src="https://avatars2.githubusercontent.com/u/3849072?s=460&v=4" width="100px;"/><br /><sub><b>王爵nice</b></sub>](https://twitter.com/biezhii) | [<img src="https://avatars2.githubusercontent.com/u/9401233?s=460&v=4" width="100px;"/><br /><sub><b>ccqy66</b></sub>](https://github.com/ccqy66) | [<img src="https://avatars0.githubusercontent.com/u/9024855?s=460&v=4" width="100px;"/><br /><sub><b>王晓辉(Eddie)</b></sub>](https://github.com/eddie-wang) | [<img src="https://avatars2.githubusercontent.com/u/2503423?s=460&v=4" width="100px;"/><br /><sub><b>代码家</b></sub>](https://github.com/daimajia) | [<img src="https://avatars2.githubusercontent.com/u/9032795?s=460&v=4" width="100px;"/><br /><sub><b>David Dong</b></sub>](https://github.com/dongm2ez) | [<img src="https://avatars1.githubusercontent.com/u/10883521?s=460&v=4" width="100px;"/><br /><sub><b>José Vieira Neto</b></sub>](https://github.com/NetoDevel) | [<img src="https://avatars0.githubusercontent.com/u/59744?s=460&v=4" width="100px;"/><br /><sub><b>Schneeman</b></sub>](https://github.com/schneems) |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| [<img src="https://avatars1.githubusercontent.com/u/497803?s=460&v=4" width="100px;"/><br /><sub><b>Mohd Farid</b></sub>](https://github.com/mfarid) | [<img src="https://avatars3.githubusercontent.com/u/1326893?s=460&v=4" width="100px;"/><br /><sub><b>sumory</b></sub>](https://github.com/sumory) | [<img src="https://avatars3.githubusercontent.com/u/463602?s=460&v=4" width="100px;"/><br /><sub><b>Uday K</b></sub>](https://github.com/udaykadaboina) | [<img src="https://avatars0.githubusercontent.com/u/11169857?s=460&v=4" width="100px;"/><br /><sub><b>Antony Kwok</b></sub>](https://github.com/Awakens) | &nbsp; | &nbsp; | &nbsp; |
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+Contributions of any kind are welcome!
 
 ## Licenses
 
